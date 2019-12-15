@@ -339,7 +339,7 @@ class StateProcessing(State):
 
         shutil.copyfile(self.app.previous_picture_file, "./pictures/" + pic_crypt_name)
         generate_qr_code("www.prinsenhof.de/~fotobox/" + pic_crypt_name,"link.jpg","./pictures/")
-        ftp_upload("./pictures/" + pic_crypt_name, "", "prinsenhof.de", "fotobox", "7jG3P\j5-!J3")
+        ftp_upload("./pictures/" + pic_crypt_name, "", "", "", "")
         os.remove("./pictures/" + pic_crypt_name)
 
         if self.app.config.getboolean('WINDOW', 'animate') and self.app.capture_nbr > 1:
