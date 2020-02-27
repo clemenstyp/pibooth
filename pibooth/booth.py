@@ -27,6 +27,8 @@ from pibooth.pictures.pool import PicturesMakersPool
 from pibooth.controls.light import PtbLed
 from pibooth.controls.button import BUTTON_DOWN, PtbButton
 from pibooth.controls.printer import PRINTER_TASKS_UPDATED, PtbPrinter
+from qr_upload import generate_qr_code, ftp_upload, gen_hash_filename
+from pic_utils import write_exif
 
 
 class StateFailSafe(State):
@@ -325,6 +327,20 @@ class StateProcessing(State):
 
         self.app.previous_picture_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_pibooth.jpg")
         maker.save(self.app.previous_picture_file)
+
+        # Generate image id
+        pic_crypt_name = gen_hash_filename(self.app.previous_picture_file)
+        
+        # Write exif informations in image file
+        write_exif(self.app.previous_picture_file, self.app.capture_nbr, pic_crypt_name)
+        
+        # Upload picture to server
+        LOGGER.info("Uploading picture")
+
+        shutil.copyfile(self.app.previous_picture_file, "./pictures/" + pic_crypt_name)
+        generate_qr_code("www.prinsenhof.de/~fotobox/" + pic_crypt_name,"link.jpg","./pictures/")
+        ftp_upload("./pictures/" + pic_crypt_name, "", "", "", "")
+        os.remove("./pictures/" + pic_crypt_name)
 
         if self.app.config.getboolean('WINDOW', 'animate') and self.app.capture_nbr > 1:
             with timeit("Asyncronously generate pictures for animation"):
@@ -737,6 +753,7 @@ def main():
         LOGGER.info("Listing all fonts available...")
         print_columns_words(get_available_fonts(), 3)
     elif not options.reset:
+        LOGGER.info("------------------------------------------------------------------")
         LOGGER.info("Starting the photo booth application...")
         app = PiApplication(config)
         app.main_loop()
