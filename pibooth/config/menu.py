@@ -51,12 +51,21 @@ class PiConfigMenu(object):
                                    dopause=False,
                                    )
 
-        for name in ('GENERAL', 'WINDOW', 'PICTURE', 'PRINTER'):
+        for name in ('GENERAL', 'WINDOW', 'PICTURE', 'PRINTER', 'SERVER'):
             submenu = self._build_submenu(name, width, height)
             self._main_menu.add_option(submenu.get_title(), submenu)
-        self._main_menu.add_option('Exit Pibooth', pgmevt.EXIT)
+        self._main_menu.add_option('Shutdown', self.shutdown)
+        # self._main_menu.add_option('Exit Pibooth', pgmevt.EXIT)
 
         self._main_menu.set_fps(fps)
+
+    def shutdown(self):
+       print('shutting down')
+       command = "/usr/bin/sudo /sbin/shutdown --poweroff now"
+       import subprocess
+       process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+       output = process.communicate()[0]
+       print(output)
 
     def _build_submenu(self, section, width, height):
         """Build sub-menu"""

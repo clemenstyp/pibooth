@@ -556,19 +556,13 @@ class PiApplication(object):
     def find_settings_event(self, events, type_filter=None):
         """Return the first found event if found in the list.
         """
-        event_capture = None
-        event_print = None
         for event in events:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and \
                     (type_filter is None or type_filter == event.type):
                 return event
             if event.type == BUTTON_DOWN:
-                if event.pin == self.button_capture and (type_filter is None or type_filter == event.type):
-                    event_capture = event
-                elif event.pin == self.button_print and (type_filter is None or type_filter == event.type):
-                    event_print = event
-            if event_capture and event_print:
-                return event_capture  # One of both (return != None is enough)
+                if event.pin == self.button_menu and (type_filter is None or type_filter == event.type):
+                    return event
 
         return None
 
