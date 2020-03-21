@@ -215,7 +215,7 @@ class PtbWindow(object):
         self._capture_number = (0, self._capture_number[1])
         self._update_background(background.OopsBackground())
 
-    def show_intro(self, pil_image=None, with_print=True, qr_code_file=None):
+    def show_intro(self, pil_image=None, with_print=True, show_qr_code = False, qr_code_file=None):
         """Show introduction view.
         """
         self._capture_number = (0, self._capture_number[1])
@@ -226,7 +226,7 @@ class PtbWindow(object):
 
         if pil_image:
             self._update_foreground(pil_image, self.RIGHT)
-            if qr_code_file:
+            if show_qr_code and qr_code_file:
                 self._add_qr_code(qr_code_file, self.LEFT)
 
     def show_choice(self, choices, selected=None):
@@ -258,7 +258,7 @@ class PtbWindow(object):
         self._capture_number = (0, self._capture_number[1])
         self._update_background(background.ProcessingBackground())
 
-    def show_print(self, pil_image=None, qr_code_file=None):
+    def show_print(self, pil_image=None, show_qr_code = False, qr_code_file=None):
         """Show print view.
         """
         self._capture_number = (0, self._capture_number[1])
@@ -266,7 +266,7 @@ class PtbWindow(object):
                                                            self.arrow_offset))
         if pil_image:
             self._update_foreground(pil_image, self.LEFT)
-            if qr_code_file:
+            if show_qr_code and qr_code_file:
                 self._add_qr_code(qr_code_file, self.RIGHT)
 
     def show_finished(self):

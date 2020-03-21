@@ -87,11 +87,12 @@ class StateWait(State):
             previous_picture = self.app.previous_picture
             # previous_picture = self.app.previous_print_picture
 
-        # if self.app.config.getboolean('SERVER', 'show_qr_on_screen'):
-        #     previous_picture = self.app.previous_print_picture
         self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                    self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
-                                   not self.app.printer_unavailable, self.app.previous_picture_qr_file)
+                                   not self.app.printer_unavailable,
+                                   self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                   self.app.previous_picture_qr_file_inverted)
+
         self.app.window.set_print_number(len(self.app.printer.get_all_tasks()), self.app.printer_unavailable)
 
         self.app.led_capture.blink()
@@ -103,7 +104,9 @@ class StateWait(State):
             previous_picture = next(self.app.previous_animated)
             self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                        self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
-                                       not self.app.printer_unavailable, self.app.previous_picture_qr_file)
+                                       not self.app.printer_unavailable,
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                       self.app.previous_picture_qr_file_inverted)
             self.timer.start()
         else:
             previous_picture = self.app.previous_picture
@@ -358,20 +361,18 @@ class StateProcessing(State):
 
 
 
-        if self.app.config.getboolean('SERVER', 'create_qr_code'):
-            qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
-            qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
-            self.app.previous_picture_qr_file_inverted = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
-            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
+        qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
+        qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
+        self.app.previous_picture_qr_file_inverted = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
+        generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
 
-            self.app.previous_picture_qr_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link.jpg")
-            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
+        self.app.previous_picture_qr_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link.jpg")
+        generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
 
-        if self.app.config.getboolean('SERVER', 'create_qr_code') and False: # add to preview
-            self.app.previous_picture_file_qith_qr = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr.jpg")
-            self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
+        self.app.previous_picture_file_qith_qr = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr.jpg")
+        self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
 
-
+        # TODO: add print effects
         self.app.previous_print_picture_file = self.app.previous_picture_file
         self.app.previous_print_picture = self.app.previous_picture
 
@@ -403,7 +404,9 @@ class StatePrint(State):
 
         with timeit("Display the final picture"):
             self.app.window.set_print_number(len(self.app.printer.get_all_tasks()), self.app.printer_unavailable)
-            self.app.window.show_print(self.app.previous_picture, self.app.previous_picture_qr_file_inverted)
+            self.app.window.show_print(self.app.previous_picture,
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                       self.app.previous_picture_qr_file_inverted)
 
         self.app.led_print.blink()
         # Reset timeout in case of settings changed
@@ -415,8 +418,13 @@ class StatePrint(State):
 
             with timeit("Send final picture to printer"):
                 self.app.led_print.switch_on()
-                self.app.printer.print_file(self.app.previous_print_picture_file,
+                print_value = self.app.config.get('SERVER', 'print_qr_code')
+                if print_value == "Picture" or print_value == "Picture and Qr Code":
+                    self.app.printer.print_file(self.app.previous_print_picture_file,
                                                 self.app.config.getint('PRINTER', 'pictures_per_page'))
+                if print_value == "Qr Code" or print_value == "Picture and Qr Code":
+                    self.app.printer.print_file(self.app.previous_picture_qr_file,
+                                            self.app.config.getint('PRINTER', 'pictures_per_page'))
 
             time.sleep(1)  # Just to let the LED switched on
             self.app.nbr_duplicates += 1
