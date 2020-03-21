@@ -346,7 +346,7 @@ class StateProcessing(State):
         pic_crypt_name = gen_hash_filename(self.app.previous_picture_file)
         
         # Write exif informations in image file
-        write_exif(self.app.previous_picture_file, self.app.capture_nbr, pic_crypt_name)
+        write_exif(self.app.previous_picture_file, self.app.capture_nbr, pic_crypt_name, self.app.config)
         
         # Upload picture to server
         LOGGER.info("Uploading picture")
