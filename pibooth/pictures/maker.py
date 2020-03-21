@@ -53,6 +53,7 @@ class PictureMaker(object):
         self._outlines = False
         self._images = images
         self._overlay_image = None
+        self._overlay_image_pos = (0,0)
         self._background_color = (255, 255, 255)
         self._background_image = None
 
@@ -293,7 +294,7 @@ class PictureMaker(object):
             self._background_image = color_or_path
         self._final = None  # Force rebuild
 
-    def set_overlay(self, image_path):
+    def set_overlay(self, image_path, image_pos = (0,0)):
         """Set an image that will be paste over the final picture.
 
         :param image_path: image path
@@ -302,6 +303,7 @@ class PictureMaker(object):
         if not osp.isfile(image_path):
             raise ValueError("Invalid background image '{}'".format(image_path))
         self._overlay_image = image_path
+        self._overlay_image_pos = image_pos
         self._final = None  # Force rebuild
 
     def set_margin(self, margin):
@@ -412,7 +414,7 @@ class PilPictureMaker(PictureMaker):
         if self._overlay_image:
             overlay = Image.open(self._overlay_image)
             overlay, _, _ = self._image_resize_keep_ratio(overlay, self.width, self.height, True)
-            image.paste(overlay, (0, 0), overlay)
+            image.paste(overlay, self._overlay_image_pos, overlay)
         return image
 
     def _build_background(self):
