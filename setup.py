@@ -57,7 +57,10 @@ def main():
             'Pillow>=6.1.0',
             'Pygame>=1.9.4',
             'pygame-menu>=2.0.4',
-            'psutil>=5.5.1'
+            'psutil>=5.5.1',
+            'qrcode>=6.1',
+            'piexif>=1.1.3',
+            'requests >= 2.21.0'
         ],
         extras_require={
             'dslr': ['gphoto2>=2.0.0'],
