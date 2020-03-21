@@ -27,8 +27,8 @@ from pibooth.pictures.pool import PicturesMakersPool
 from pibooth.controls.light import PtbLed
 from pibooth.controls.button import BUTTON_DOWN, PtbButton
 from pibooth.controls.printer import PRINTER_TASKS_UPDATED, PtbPrinter
-from qr_upload import generate_qr_code, ftp_upload, gen_hash_filename
-from pic_utils import write_exif
+from pibooth.qr_upload import generate_qr_code,add_qr_code_to_image, web_upload, gen_hash_filename
+from pibooth.pic_utils import write_exif
 
 
 class StateFailSafe(State):
@@ -41,9 +41,14 @@ class StateFailSafe(State):
         self.app.dirname = None
         self.app.capture_nbr = None
         self.app.nbr_duplicates = 0
-        self.app.previous_picture = None
         self.app.previous_animated = []
-        self.app.previous_picture_file = None
+        self.previous_picture = None
+        self.previous_picture_file = None
+        self.previous_print_picture = None
+        self.previous_print_picture_file = None
+        self.previous_print_picture_file_qith_qr = None
+        self.previous_picture_qr_file = None
+        self.previous_picture_qr_file_inverted = None
         self.app.camera.drop_captures()  # Flush previous captures
         self.app.window.show_oops()
         self.timer.start()
@@ -72,6 +77,7 @@ class StateWait(State):
 
         if self.final_display_timer and self.final_display_timer.is_timeout():
             previous_picture = None
+            previous_print_picture = None
         elif self.app.config.getboolean('WINDOW', 'animate') and animated:
             self.app.previous_animated = itertools.cycle(animated)
             previous_picture = next(self.app.previous_animated)
@@ -79,10 +85,13 @@ class StateWait(State):
             self.timer.start()
         else:
             previous_picture = self.app.previous_picture
+            # previous_picture = self.app.previous_print_picture
 
+        # if self.app.config.getboolean('SERVER', 'show_qr_on_screen'):
+        #     previous_picture = self.app.previous_print_picture
         self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                    self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
-                                   not self.app.printer_unavailable)
+                                   not self.app.printer_unavailable, self.app.previous_picture_qr_file)
         self.app.window.set_print_number(len(self.app.printer.get_all_tasks()), self.app.printer_unavailable)
 
         self.app.led_capture.blink()
@@ -94,12 +103,12 @@ class StateWait(State):
             previous_picture = next(self.app.previous_animated)
             self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                        self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
-                                       not self.app.printer_unavailable)
+                                       not self.app.printer_unavailable, self.app.previous_picture_qr_file)
             self.timer.start()
         else:
             previous_picture = self.app.previous_picture
 
-        if self.app.find_print_event(events) and self.app.previous_picture_file and self.app.printer.is_installed()\
+        if self.app.find_print_event(events) and self.app.previous_print_picture_file and self.app.printer.is_installed()\
                 and not (self.final_display_timer and self.final_display_timer.is_timeout()):
 
             if self.app.nbr_duplicates >= self.app.config.getint('PRINTER', 'max_duplicates'):
@@ -114,8 +123,8 @@ class StateWait(State):
 
             with timeit("Send final picture to printer"):
                 self.app.led_print.switch_on()
-                self.app.printer.print_file(self.app.previous_picture_file,
-                                            self.app.config.getint('PRINTER', 'pictures_per_page'))
+                self.app.printer.print_file(self.app.previous_print_picture_file,
+                                                self.app.config.getint('PRINTER', 'pictures_per_page'))
 
             time.sleep(1)  # Just to let the LED switched on
             self.app.nbr_duplicates += 1
@@ -219,8 +228,13 @@ class StateCapture(State):
     def entry_actions(self):
         LOGGER.info("Start new captures sequence")
         self.app.nbr_duplicates = 0
-        self.app.previous_picture = None
-        self.app.previous_picture_file = None
+        self.previous_picture = None
+        self.previous_picture_file = None
+        self.previous_print_picture = None
+        self.previous_print_picture_file = None
+        self.previous_print_picture_file_qith_qr = None
+        self.previous_picture_qr_file = None
+        self.previous_picture_qr_file_inverted = None
         self.app.dirname = osp.join(self.app.savedir, "raw", time.strftime("%Y-%m-%d-%H-%M-%S"))
         os.makedirs(self.app.dirname)
         self.app.led_preview.switch_on()
@@ -337,10 +351,30 @@ class StateProcessing(State):
         # Upload picture to server
         LOGGER.info("Uploading picture")
 
-        shutil.copyfile(self.app.previous_picture_file, "./pictures/" + pic_crypt_name)
-        generate_qr_code("www.prinsenhof.de/~fotobox/" + pic_crypt_name,"link.jpg","./pictures/")
-        ftp_upload("./pictures/" + pic_crypt_name, "", "", "", "")
-        os.remove("./pictures/" + pic_crypt_name)
+        if self.app.config.getboolean('SERVER', 'upload_image'):
+            url = self.app.config.get('SERVER', 'server_url').strip('"')
+            pwd = self.app.config.get('SERVER', 'server_pwd').strip('"')
+            web_upload(file=self.app.previous_picture_file, crypt_name=pic_crypt_name, url=url, pwd=pwd)
+
+
+
+        if self.app.config.getboolean('SERVER', 'create_qr_code'):
+            qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
+            qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
+            self.app.previous_picture_qr_file_inverted = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
+            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
+
+            self.app.previous_picture_qr_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link.jpg")
+            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
+
+        if self.app.config.getboolean('SERVER', 'create_qr_code') and False: # add to preview
+            self.app.previous_picture_file_qith_qr = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr.jpg")
+            self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
+
+
+        self.app.previous_print_picture_file = self.app.previous_picture_file
+        self.app.previous_print_picture = self.app.previous_picture
+
 
         if self.app.config.getboolean('WINDOW', 'animate') and self.app.capture_nbr > 1:
             with timeit("Asyncronously generate pictures for animation"):
@@ -369,7 +403,7 @@ class StatePrint(State):
 
         with timeit("Display the final picture"):
             self.app.window.set_print_number(len(self.app.printer.get_all_tasks()), self.app.printer_unavailable)
-            self.app.window.show_print(self.app.previous_picture)
+            self.app.window.show_print(self.app.previous_picture, self.app.previous_picture_qr_file_inverted)
 
         self.app.led_print.blink()
         # Reset timeout in case of settings changed
@@ -377,12 +411,12 @@ class StatePrint(State):
         self.timer.start()
 
     def do_actions(self, events):
-        if self.app.find_print_event(events) and self.app.previous_picture_file:
+        if self.app.find_print_event(events) and self.app.previous_print_picture_file:
 
             with timeit("Send final picture to printer"):
                 self.app.led_print.switch_on()
-                self.app.printer.print_file(self.app.previous_picture_file,
-                                            self.app.config.getint('PRINTER', 'pictures_per_page'))
+                self.app.printer.print_file(self.app.previous_print_picture_file,
+                                                self.app.config.getint('PRINTER', 'pictures_per_page'))
 
             time.sleep(1)  # Just to let the LED switched on
             self.app.nbr_duplicates += 1
@@ -470,7 +504,8 @@ class PiApplication(object):
         self.led_print = PtbLed(config.getint('CONTROLS', 'print_led_pin'))
         self.button_print = PtbButton(config.getint('CONTROLS', 'print_btn_pin'),
                                       config.getfloat('CONTROLS', 'debounce_delay'))
-
+        self.button_menu = PtbButton(config.getint('CONTROLS', 'menu_btn_pin'),
+                                        config.getfloat('CONTROLS', 'debounce_delay'))
         self.led_startup = PtbLed(config.getint('CONTROLS', 'startup_led_pin'))
         self.led_preview = PtbLed(config.getint('CONTROLS', 'preview_led_pin'))
 
@@ -483,9 +518,14 @@ class PiApplication(object):
         self.capture_nbr = None
         self.capture_choices = (4, 1)
         self.nbr_duplicates = 0
-        self.previous_picture = None
         self.previous_animated = []
+        self.previous_picture = None
         self.previous_picture_file = None
+        self.previous_print_picture = None
+        self.previous_print_picture_file = None
+        self.previous_print_picture_file_qith_qr = None
+        self.previous_picture_qr_file = None
+        self.previous_picture_qr_file_inverted = None
 
     def initialize(self):
         """Restore the application with initial parameters defined in the
@@ -560,9 +600,9 @@ class PiApplication(object):
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and \
                     (type_filter is None or type_filter == event.type):
                 return event
-            if event.type == BUTTON_DOWN:
-                if event.pin == self.button_menu and (type_filter is None or type_filter == event.type):
-                    return event
+            if event.type == BUTTON_DOWN and event.pin == self.button_menu and \
+                    (type_filter is None or type_filter == event.type):
+                return event
 
         return None
 

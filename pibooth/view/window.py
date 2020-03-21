@@ -92,6 +92,29 @@ class PtbWindow(object):
         self._update_capture_number()
         self._update_print_number()
 
+    def _add_qr_code(self, qr_code_file, pos=LEFT):
+        if qr_code_file:
+            qr_code_image = pygame.image.load(qr_code_file).convert()
+            qr_code_size = qr_code_image.get_rect()
+            image_width = self.size[0] * 0.2
+            if qr_code_size[3] == 0:
+                image_height = image_width
+            else:
+                image_height = image_width * qr_code_size[2] / qr_code_size[3]
+            qr_size = (int(image_width), int(image_height))
+            small_qr_code = pygame.transform.scale(qr_code_image, qr_size)
+            if pos == self.RIGHT:
+                pos_x = (self.size[0] - (self.size[0] / 3.8)) - (image_width / 2)
+            elif pos == self.CENTER:
+                pos_x = (self.size[0] / 2) - (image_width / 2)
+            else:
+                pos_x = (self.size[0] /3.8) - (image_width / 2)
+
+            pos_y = (self.size[1] / 5) - (image_height / 2)
+
+
+            self.surface.blit(small_qr_code, (int(pos_x), int(pos_y)))
+
     def _update_capture_number(self):
         """Update the captures counter displayed.
         """
@@ -192,7 +215,7 @@ class PtbWindow(object):
         self._capture_number = (0, self._capture_number[1])
         self._update_background(background.OopsBackground())
 
-    def show_intro(self, pil_image=None, with_print=True):
+    def show_intro(self, pil_image=None, with_print=True, qr_code_file=None):
         """Show introduction view.
         """
         self._capture_number = (0, self._capture_number[1])
@@ -203,6 +226,8 @@ class PtbWindow(object):
 
         if pil_image:
             self._update_foreground(pil_image, self.RIGHT)
+            if qr_code_file:
+                self._add_qr_code(qr_code_file, self.LEFT)
 
     def show_choice(self, choices, selected=None):
         """Show the choice view.
@@ -233,7 +258,7 @@ class PtbWindow(object):
         self._capture_number = (0, self._capture_number[1])
         self._update_background(background.ProcessingBackground())
 
-    def show_print(self, pil_image=None):
+    def show_print(self, pil_image=None, qr_code_file=None):
         """Show print view.
         """
         self._capture_number = (0, self._capture_number[1])
@@ -241,6 +266,8 @@ class PtbWindow(object):
                                                            self.arrow_offset))
         if pil_image:
             self._update_foreground(pil_image, self.LEFT)
+            if qr_code_file:
+                self._add_qr_code(qr_code_file, self.RIGHT)
 
     def show_finished(self):
         """Show finished view.
