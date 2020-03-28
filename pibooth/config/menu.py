@@ -54,10 +54,32 @@ class PiConfigMenu(object):
         for name in ('GENERAL', 'WINDOW', 'PICTURE', 'PRINTER', 'SERVER'):
             submenu = self._build_submenu(name, width, height)
             self._main_menu.add_option(submenu.get_title(), submenu)
-        self._main_menu.add_option('Shutdown', self.shutdown)
-        # self._main_menu.add_option('Exit Pibooth', pgmevt.EXIT)
+
+        exitmenu = self._build_exitmenu('Exit', width, height)
+        self._main_menu.add_option(exitmenu.get_title(), exitmenu)
 
         self._main_menu.set_fps(fps)
+
+    def _build_exitmenu(self, section, width, height):
+        """Build sub-menu"""
+        menu = pgm.Menu(self.window.surface,
+                        width,
+                        height,
+                        fonts.get_filename("Amatic-Bold"),
+                        section.capitalize(),
+                        font_size=30,
+                        font_color=(255, 255, 255),
+                        font_title = fonts.get_filename("Amatic-Bold"),
+                        color_selected=(38, 139, 100),
+                        menu_color=(0, 0, 51),
+                        menu_color_title=(60, 90, 140),
+                        dopause=False,
+                        )
+
+        menu.add_option('Shutdown', self.shutdown)
+        menu.add_option('Exit Pibooth', pgmevt.EXIT)
+
+        return menu
 
     def shutdown(self):
        print('shutting down')
