@@ -59,6 +59,12 @@ def add_qr_code_to_image(qr_code_image, base_image, result_image):
     img_bg.save(result_image)
     return img_bg
 
+def black_white_image(file, black_white_file):
+    image_file = Image.open(file)  # open colour image
+    image_file = image_file.convert('L')  # convert image to black and white
+    image_file.save(black_white_file)
+    return image_file
+
 def web_upload(file, crypt_name, url, pwd):
     """Upload a file to an ssh server
     param filename: Name and path of local file

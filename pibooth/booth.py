@@ -27,7 +27,7 @@ from pibooth.pictures.pool import PicturesMakersPool
 from pibooth.controls.light import PtbLed
 from pibooth.controls.button import BUTTON_DOWN, PtbButton
 from pibooth.controls.printer import PRINTER_TASKS_UPDATED, PtbPrinter
-from pibooth.qr_upload import generate_qr_code,add_qr_code_to_image, web_upload, gen_hash_filename
+from pibooth.qr_upload import generate_qr_code,add_qr_code_to_image, web_upload, gen_hash_filename, black_white_image
 from pibooth.pic_utils import write_exif
 
 
@@ -44,7 +44,6 @@ class StateFailSafe(State):
         self.app.previous_animated = []
         self.previous_picture = None
         self.previous_picture_file = None
-        self.previous_print_picture = None
         self.previous_print_picture_file = None
         self.previous_print_picture_file_qith_qr = None
         self.previous_picture_qr_file = None
@@ -77,7 +76,6 @@ class StateWait(State):
 
         if self.final_display_timer and self.final_display_timer.is_timeout():
             previous_picture = None
-            previous_print_picture = None
         elif self.app.config.getboolean('WINDOW', 'animate') and animated:
             self.app.previous_animated = itertools.cycle(animated)
             previous_picture = next(self.app.previous_animated)
@@ -85,7 +83,6 @@ class StateWait(State):
             self.timer.start()
         else:
             previous_picture = self.app.previous_picture
-            # previous_picture = self.app.previous_print_picture
 
         self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                    self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
@@ -111,6 +108,7 @@ class StateWait(State):
         else:
             previous_picture = self.app.previous_picture
 
+
         if self.app.find_print_event(events) and self.app.previous_print_picture_file and self.app.printer.is_installed()\
                 and not (self.final_display_timer and self.final_display_timer.is_timeout()):
 
@@ -133,10 +131,18 @@ class StateWait(State):
             self.app.nbr_duplicates += 1
 
             if self.app.nbr_duplicates >= self.app.config.getint('PRINTER', 'max_duplicates') or self.app.printer_unavailable:
-                self.app.window.show_intro(previous_picture, False)
+                self.app.window.show_intro(previous_picture, False,
+                                           self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                           self.app.previous_picture_qr_file_inverted)
                 self.app.led_print.switch_off()
             else:
                 self.app.led_print.blink()
+        else:
+            self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
+                                       self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
+                                       not self.app.printer_unavailable,
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                       self.app.previous_picture_qr_file_inverted)
 
         event = self.app.find_print_status_event(events)
         if event:
@@ -233,7 +239,6 @@ class StateCapture(State):
         self.app.nbr_duplicates = 0
         self.previous_picture = None
         self.previous_picture_file = None
-        self.previous_print_picture = None
         self.previous_print_picture_file = None
         self.previous_print_picture_file_qith_qr = None
         self.previous_picture_qr_file = None
@@ -343,6 +348,7 @@ class StateProcessing(State):
             self.app.previous_picture = maker.build()
 
         self.app.previous_picture_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_pibooth.jpg")
+
         maker.save(self.app.previous_picture_file)
 
         # Generate image id
@@ -353,29 +359,34 @@ class StateProcessing(State):
         
         # Upload picture to server
         LOGGER.info("Uploading picture")
-
+        web_upload_sucessful = False
         if self.app.config.getboolean('SERVER', 'upload_image'):
             url = self.app.config.get('SERVER', 'server_url').strip('"')
             pwd = self.app.config.get('SERVER', 'server_pwd').strip('"')
-            web_upload(file=self.app.previous_picture_file, crypt_name=pic_crypt_name, url=url, pwd=pwd)
+            web_upload_sucessful = web_upload(file=self.app.previous_picture_file, crypt_name=pic_crypt_name, url=url, pwd=pwd)
 
 
+        if web_upload_sucessful:
+            qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
+            qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
+            self.app.previous_picture_qr_file_inverted = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
+            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
 
-        qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
-        qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
-        self.app.previous_picture_qr_file_inverted = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
-        generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
+            self.app.previous_picture_qr_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link.jpg")
+            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file, inverted=False)
 
-        self.app.previous_picture_qr_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link.jpg")
-        generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
+            # to print qr code on file:
+            self.app.previous_picture_file_qith_qr = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_pibooth_qr.jpg")
+            add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file,
+                                 self.app.previous_picture_file_qith_qr)
+            # self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
 
-        self.app.previous_picture_file_qith_qr = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr.jpg")
-        self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
 
-        # TODO: add print effects
-        self.app.previous_print_picture_file = self.app.previous_picture_file
-        self.app.previous_print_picture = self.app.previous_picture
-
+        if self.app.config.getboolean('PRINTER', 'black_white'):
+            self.app.previous_print_picture_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_pibooth_print.jpg")
+            black_white_image(self.app.previous_picture_file, self.app.previous_print_picture_file)
+        else:
+            self.app.previous_print_picture_file = self.app.previous_picture_file
 
         if self.app.config.getboolean('WINDOW', 'animate') and self.app.capture_nbr > 1:
             with timeit("Asyncronously generate pictures for animation"):
@@ -529,7 +540,6 @@ class PiApplication(object):
         self.previous_animated = []
         self.previous_picture = None
         self.previous_picture_file = None
-        self.previous_print_picture = None
         self.previous_print_picture_file = None
         self.previous_print_picture_file_qith_qr = None
         self.previous_picture_qr_file = None
