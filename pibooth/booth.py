@@ -246,9 +246,9 @@ class StateCapture(State):
         self.previous_picture_qr_file = None
         self.previous_picture_qr_file_inverted = None
         # always remove data from tempdir
-        if osp.isdir(self.tempdir):
-            shutil.rmtree(self.tempdir)
-            os.makedirs(self.tempdir)
+        if osp.isdir(self.app.tempdir):
+            shutil.rmtree(self.app.tempdir)
+            os.makedirs(self.app.tempdir)
 
         self.app.dirname = osp.join(self.app.savedir, "raw", time.strftime("%Y-%m-%d-%H-%M-%S"))
         os.makedirs(self.app.dirname)
