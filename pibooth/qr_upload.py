@@ -10,7 +10,7 @@ import requests
 import json
 import base64
 from pibooth.utils import LOGGER
-
+import threading
  
 def generate_qr_code(data,filepath, inverted = False):
     """Generates a qr code
@@ -65,26 +65,39 @@ def black_white_image(file, black_white_file):
     image_file.save(black_white_file)
     return image_file
 
-def web_upload(file, crypt_name, url, pwd):
+def upload_now(file, crypt_name, url, pwd, app):
+    """Upload a file to an ssh server
+       param filename: Name and path of local file
+       param url: The server address
+       param pwd: Password for the user on the server
+       """
+    upload_status = False
+    try:
+
+        with open(file, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read())
+            payload = {'pass': pwd, 'image': encoded_string, 'filename': crypt_name}
+        response = requests.post(url, json=payload)
+        if response.ok and response.text == 'OK':
+            upload_status = True
+        else:
+            LOGGER.error(response.text.encode('utf8'))
+    except Exception as e:
+        LOGGER.error("upload failed! " + str(e))
+
+    app.web_upload_sucessful = upload_status
+
+
+def web_upload(file, crypt_name, url, pwd, app):
     """Upload a file to an ssh server
     param filename: Name and path of local file
     param url: The server address
     param pwd: Password for the user on the server 
     """
-    upload_status=False
-    try:
+    upload_thread = threading.Thread(target=upload_now, args=(file, crypt_name, url, pwd, app))
+    upload_thread.start()
 
-        with open(file, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read())
-            payload = {'pass': pwd, 'image': encoded_string, 'filename' : crypt_name}
-        response = requests.post(url, json=payload)
-        if response.ok and response.text == 'OK':
-                upload_status = True
-        else:
-            LOGGER.error(response.text.encode('utf8'))
-    except Exception as e:
-        LOGGER.error("upload failed! " + str(e))
-    return upload_status
+
 
     
 def gen_hash_filename(filename):

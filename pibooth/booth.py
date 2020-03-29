@@ -45,6 +45,7 @@ class StateFailSafe(State):
         self.previous_picture = None
         self.previous_picture_file = None
         self.previous_print_picture_file = None
+        self.web_upload_sucessful = False
         self.previous_print_picture_file_qith_qr = None
         self.previous_picture_qr_file = None
         self.previous_picture_qr_file_inverted = None
@@ -87,7 +88,7 @@ class StateWait(State):
         self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                    self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
                                    not self.app.printer_unavailable,
-                                   self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                   self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
                                    self.app.previous_picture_qr_file_inverted)
 
         self.app.window.set_print_number(len(self.app.printer.get_all_tasks()), self.app.printer_unavailable)
@@ -102,7 +103,7 @@ class StateWait(State):
             self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                        self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
                                        not self.app.printer_unavailable,
-                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
                                        self.app.previous_picture_qr_file_inverted)
             self.timer.start()
         else:
@@ -132,7 +133,7 @@ class StateWait(State):
 
             if self.app.nbr_duplicates >= self.app.config.getint('PRINTER', 'max_duplicates') or self.app.printer_unavailable:
                 self.app.window.show_intro(previous_picture, False,
-                                           self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                           self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
                                            self.app.previous_picture_qr_file_inverted)
                 self.app.led_print.switch_off()
             else:
@@ -141,7 +142,7 @@ class StateWait(State):
             self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                        self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
                                        not self.app.printer_unavailable,
-                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
                                        self.app.previous_picture_qr_file_inverted)
 
         event = self.app.find_print_status_event(events)
@@ -240,9 +241,15 @@ class StateCapture(State):
         self.previous_picture = None
         self.previous_picture_file = None
         self.previous_print_picture_file = None
+        self.web_upload_sucessful = False
         self.previous_print_picture_file_qith_qr = None
         self.previous_picture_qr_file = None
         self.previous_picture_qr_file_inverted = None
+        # always remove data from tempdir
+        if osp.isdir(self.tempdir):
+            shutil.rmtree(self.tempdir)
+            os.makedirs(self.tempdir)
+
         self.app.dirname = osp.join(self.app.savedir, "raw", time.strftime("%Y-%m-%d-%H-%M-%S"))
         os.makedirs(self.app.dirname)
         self.app.led_preview.switch_on()
@@ -359,31 +366,29 @@ class StateProcessing(State):
         
         # Upload picture to server
         LOGGER.info("Uploading picture")
-        web_upload_sucessful = False
         if self.app.config.getboolean('SERVER', 'upload_image'):
             url = self.app.config.get('SERVER', 'server_url').strip('"')
             pwd = self.app.config.get('SERVER', 'server_pwd').strip('"')
-            web_upload_sucessful = web_upload(file=self.app.previous_picture_file, crypt_name=pic_crypt_name, url=url, pwd=pwd)
+            web_upload(file=self.app.previous_picture_file, crypt_name=pic_crypt_name, url=url, pwd=pwd, app=self.app)
 
 
-        if web_upload_sucessful:
-            qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
-            qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
-            self.app.previous_picture_qr_file_inverted = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
-            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
+        qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
+        qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
+        self.app.previous_picture_qr_file_inverted = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
+        generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
 
-            self.app.previous_picture_qr_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_qr_link.jpg")
-            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file, inverted=False)
+        self.app.previous_picture_qr_file = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_qr_link.jpg")
+        generate_qr_code(qr_code_link, self.app.previous_picture_qr_file, inverted=False)
 
-            # to print qr code on file:
-            self.app.previous_picture_file_qith_qr = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_pibooth_qr.jpg")
-            add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file,
-                                 self.app.previous_picture_file_qith_qr)
-            # self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
+        # to print qr code on file:
+        self.app.previous_picture_file_qith_qr = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_pibooth_qr.jpg")
+        add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file,
+                             self.app.previous_picture_file_qith_qr)
+        # self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
 
 
         if self.app.config.getboolean('PRINTER', 'black_white'):
-            self.app.previous_print_picture_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_pibooth_print.jpg")
+            self.app.previous_print_picture_file = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_pibooth_print.jpg")
             black_white_image(self.app.previous_picture_file, self.app.previous_print_picture_file)
         else:
             self.app.previous_print_picture_file = self.app.previous_picture_file
@@ -416,7 +421,7 @@ class StatePrint(State):
         with timeit("Display the final picture"):
             self.app.window.set_print_number(len(self.app.printer.get_all_tasks()), self.app.printer_unavailable)
             self.app.window.show_print(self.app.previous_picture,
-                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
                                        self.app.previous_picture_qr_file_inverted)
 
         self.app.led_print.blink()
@@ -476,6 +481,14 @@ class PiApplication(object):
         if osp.isdir(self.savedir) and config.getboolean('GENERAL', 'clear_on_startup'):
             shutil.rmtree(self.savedir)
             os.makedirs(self.savedir)
+
+        self.tempdir = osp.join(self.savedir, "tmp")
+        if not osp.isdir(self.tempdir):
+            os.makedirs(self.tempdir)
+        # always remove tempdir
+        if osp.isdir(self.tempdir):
+            shutil.rmtree(self.tempdir)
+            os.makedirs(self.tempdir)
 
         # Prepare GPIO, physical pins mode
         GPIO.setmode(GPIO.BOARD)
@@ -541,6 +554,7 @@ class PiApplication(object):
         self.previous_picture = None
         self.previous_picture_file = None
         self.previous_print_picture_file = None
+        self.web_upload_sucessful = False
         self.previous_print_picture_file_qith_qr = None
         self.previous_picture_qr_file = None
         self.previous_picture_qr_file_inverted = None
