@@ -26,9 +26,9 @@ def generate_qr_code(data,filepath, inverted = False):
     qr.add_data(data)
     qr.make(fit=True)
     if inverted:
-        img = qr.make_image(fill_color="white", back_color="black")
+        img = qr.make_image(fill_color="white", back_color="black").convert('RGB')
     else:
-        img = qr.make_image(fill_color="black", back_color="white")
+        img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
     img.save(filepath, "JPEG", quality=80, optimize=True, progressive=True)
     return
 
