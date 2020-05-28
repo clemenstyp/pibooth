@@ -369,7 +369,7 @@ class PiConfigParser(ConfigParser):
             with open(filename, 'w') as fp:
                 fp.write("[Desktop Entry]\n")
                 fp.write("Name=pibooth\n")
-                fp.write("Exec=pibooth\n")
+                fp.write("Exec=pibooth --log /home/pi/pibooth.log\n")
                 fp.write("Type=application\n")
 
         elif not enable and osp.isfile(filename):

@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw
 
 from pibooth import fonts
 from pibooth.pictures import sizing
-
+from pibooth.utils import timeit
 
 class BaseCamera(object):
 
@@ -89,7 +89,8 @@ class BaseCamera(object):
         """
         images = []
         for path in sorted(self._captures):
-            images.append(self._post_process_capture(path))
+            with timeit("loading an image ({})".format(path)):
+                images.append(self._post_process_capture(path))
         self.drop_captures()
         return images
 

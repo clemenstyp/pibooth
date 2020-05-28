@@ -308,6 +308,8 @@ to know the default pins used.
 Credits
 -------
 
+Gallery from: https://tutorialzine.com/2017/02/freebie-4-bootstrap-galleries
+
 Icons from the Noun Project
 
 - Polaroid by icon 54

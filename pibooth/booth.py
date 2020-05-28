@@ -27,7 +27,7 @@ from pibooth.pictures.pool import PicturesMakersPool
 from pibooth.controls.light import PtbLed
 from pibooth.controls.button import BUTTON_DOWN, PtbButton
 from pibooth.controls.printer import PRINTER_TASKS_UPDATED, PtbPrinter
-from pibooth.qr_upload import generate_qr_code,add_qr_code_to_image, web_upload, gen_hash_filename, black_white_image
+from pibooth.qr_upload import generate_qr_code,add_qr_code_to_image, web_upload, gen_hash_filename, black_white_image, create_qr_code_print
 from pibooth.pic_utils import write_exif
 
 
@@ -88,7 +88,7 @@ class StateWait(State):
         self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                    self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
                                    not self.app.printer_unavailable,
-                                   self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
+                                   self.app.config.getboolean('SERVER', 'show_qr_on_screen') ,
                                    self.app.previous_picture_qr_file_inverted)
 
         self.app.window.set_print_number(len(self.app.printer.get_all_tasks()), self.app.printer_unavailable)
@@ -103,14 +103,19 @@ class StateWait(State):
             self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                        self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
                                        not self.app.printer_unavailable,
-                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
                                        self.app.previous_picture_qr_file_inverted)
             self.timer.start()
         else:
             previous_picture = self.app.previous_picture
 
+        if self.app.find_print_qr_event(events):
+            # print qr code:
+            if self.app.qr_printer.nbr_printed == 0:
+                LOGGER.info("print qr code now")
+                self.app.qr_printer.print_file(self.app.previous_picture_qr_file_print, 1)
 
-        if self.app.find_print_event(events) and self.app.previous_print_picture_file and self.app.printer.is_installed()\
+        elif self.app.find_print_event(events) and self.app.previous_print_picture_file and self.app.printer.is_installed()\
                 and not (self.final_display_timer and self.final_display_timer.is_timeout()):
 
             if self.app.nbr_duplicates >= self.app.config.getint('PRINTER', 'max_duplicates'):
@@ -133,7 +138,7 @@ class StateWait(State):
 
             if self.app.nbr_duplicates >= self.app.config.getint('PRINTER', 'max_duplicates') or self.app.printer_unavailable:
                 self.app.window.show_intro(previous_picture, False,
-                                           self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
+                                           self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
                                            self.app.previous_picture_qr_file_inverted)
                 self.app.led_print.switch_off()
             else:
@@ -142,8 +147,10 @@ class StateWait(State):
             self.app.window.show_intro(previous_picture, self.app.printer.is_installed() and
                                        self.app.nbr_duplicates < self.app.config.getint('PRINTER', 'max_duplicates') and
                                        not self.app.printer_unavailable,
-                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen') ,
                                        self.app.previous_picture_qr_file_inverted)
+
+
 
         event = self.app.find_print_status_event(events)
         if event:
@@ -160,7 +167,7 @@ class StateWait(State):
         self.app.window.show_image(None)
 
     def validate_transition(self, events):
-        if self.app.find_capture_event(events):
+        if  self.app.find_print_qr_event(events) is None and self.app.find_capture_event(events):
             if len(self.app.capture_choices) > 1:
                 return 'choose'
             else:
@@ -318,80 +325,90 @@ class StateProcessing(State):
 
     def do_actions(self, events):
         with timeit("Creating the final picture"):
-            captures = self.app.camera.get_captures()
+            with timeit("loading images"):
+                captures = self.app.camera.get_captures()
 
-            backgrounds = self.app.config.gettuple('PICTURE', 'backgrounds', ('color', 'path'), 2)
-            if self.app.capture_nbr == self.app.capture_choices[0]:
-                background = backgrounds[0]
-            else:
-                background = backgrounds[1]
+            with timeit("Creating backgrounds"):
+                backgrounds = self.app.config.gettuple('PICTURE', 'backgrounds', ('color', 'path'), 2)
+                if self.app.capture_nbr == self.app.capture_choices[0]:
+                    background = backgrounds[0]
+                else:
+                    background = backgrounds[1]
 
-            overlays = self.app.config.gettuple('PICTURE', 'overlays', 'path', 2)
-            if self.app.capture_nbr == self.app.capture_choices[0]:
-                overlay = overlays[0]
-            else:
-                overlay = overlays[1]
+            with timeit("Creating overlays"):
+                overlays = self.app.config.gettuple('PICTURE', 'overlays', 'path', 2)
+                if self.app.capture_nbr == self.app.capture_choices[0]:
+                    overlay = overlays[0]
+                else:
+                    overlay = overlays[1]
 
+                texts = [self.app.config.get('PICTURE', 'footer_text1').strip('"'),
+                         self.app.config.get('PICTURE', 'footer_text2').strip('"')]
+                colors = self.app.config.gettuple('PICTURE', 'text_colors', 'color', len(texts))
+                text_fonts = self.app.config.gettuple('PICTURE', 'text_fonts', str, len(texts))
+                alignments = self.app.config.gettuple('PICTURE', 'text_alignments', str, len(texts))
+
+                def _setup_maker(m):
+                    m.set_background(background)
+                    if any(elem != '' for elem in texts):
+                        for params in zip(texts, text_fonts, colors, alignments):
+                            m.add_text(*params)
+                    if self.app.config.getboolean('PICTURE', 'captures_cropping'):
+                        m.set_cropping()
+                    if overlay:
+                        m.set_overlay(overlay)
+                    if self.app.config.getboolean('GENERAL', 'debug'):
+                        m.set_outlines()
+
+            with timeit("make it"):
+                maker = get_picture_maker(captures, self.app.config.get('PICTURE', 'orientation'))
+                _setup_maker(maker)
+                self.app.previous_picture = maker.build()
+
+        with timeit("Saving the final picture"):
+            self.app.previous_picture_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_pibooth.jpg")
+
+            maker.save(self.app.previous_picture_file)
+
+            # Generate image id
+            pic_crypt_name = gen_hash_filename(self.app.previous_picture_file)
+
+            # Write exif informations in image file
+            write_exif(self.app.previous_picture_file, self.app.capture_nbr, pic_crypt_name, self.app.config)
+
+            # Upload picture to server
+            LOGGER.info("Uploading picture")
+            if self.app.config.getboolean('SERVER', 'upload_image'):
+                url = self.app.config.get('SERVER', 'server_url').strip('"')
+                pwd = self.app.config.get('SERVER', 'server_pwd').strip('"')
+                #web_upload(file=self.app.previous_picture_file, crypt_name=pic_crypt_name, url=url, pwd=pwd, app=self.app)
+                webfile = osp.join(self.app.webdir, pic_crypt_name + ".jpg")
+                shutil.copy(self.app.previous_picture_file, webfile)
+                self.app.web_upload_sucessful = True
+
+
+            qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
+            qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
+            self.app.previous_picture_qr_file_inverted = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
+            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
+
+            self.app.previous_picture_qr_file = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_qr_link.jpg")
+            generate_qr_code(qr_code_link, self.app.previous_picture_qr_file, inverted=False)
+
+            # to print qr code on file:
+            self.app.previous_picture_qr_file_print = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_pibooth_qr.jpg")
+            # add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_qr_file_print)
             texts = [self.app.config.get('PICTURE', 'footer_text1').strip('"'),
                      self.app.config.get('PICTURE', 'footer_text2').strip('"')]
-            colors = self.app.config.gettuple('PICTURE', 'text_colors', 'color', len(texts))
-            text_fonts = self.app.config.gettuple('PICTURE', 'text_fonts', str, len(texts))
-            alignments = self.app.config.gettuple('PICTURE', 'text_alignments', str, len(texts))
+            create_qr_code_print(self.app.previous_picture_qr_file, self.app.previous_picture_qr_file_print, texts, pic_crypt_name)
+            # self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
+            # self.app.qr_printer.print_file(self.app.previous_picture_qr_file_print, 1)
 
-            def _setup_maker(m):
-                m.set_background(background)
-                if any(elem != '' for elem in texts):
-                    for params in zip(texts, text_fonts, colors, alignments):
-                        m.add_text(*params)
-                if self.app.config.getboolean('PICTURE', 'captures_cropping'):
-                    m.set_cropping()
-                if overlay:
-                    m.set_overlay(overlay)
-                if self.app.config.getboolean('GENERAL', 'debug'):
-                    m.set_outlines()
-
-            maker = get_picture_maker(captures, self.app.config.get('PICTURE', 'orientation'))
-            _setup_maker(maker)
-            self.app.previous_picture = maker.build()
-
-        self.app.previous_picture_file = osp.join(self.app.savedir, osp.basename(self.app.dirname) + "_pibooth.jpg")
-
-        maker.save(self.app.previous_picture_file)
-
-        # Generate image id
-        pic_crypt_name = gen_hash_filename(self.app.previous_picture_file)
-        
-        # Write exif informations in image file
-        write_exif(self.app.previous_picture_file, self.app.capture_nbr, pic_crypt_name, self.app.config)
-        
-        # Upload picture to server
-        LOGGER.info("Uploading picture")
-        if self.app.config.getboolean('SERVER', 'upload_image'):
-            url = self.app.config.get('SERVER', 'server_url').strip('"')
-            pwd = self.app.config.get('SERVER', 'server_pwd').strip('"')
-            web_upload(file=self.app.previous_picture_file, crypt_name=pic_crypt_name, url=url, pwd=pwd, app=self.app)
-
-
-        qr_code_link = self.app.config.get('SERVER', 'qr_code_link').strip('"')
-        qr_code_link = qr_code_link.replace("{hash}", pic_crypt_name)
-        self.app.previous_picture_qr_file_inverted = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_qr_link_inverted.jpg")
-        generate_qr_code(qr_code_link, self.app.previous_picture_qr_file_inverted, inverted=True)
-
-        self.app.previous_picture_qr_file = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_qr_link.jpg")
-        generate_qr_code(qr_code_link, self.app.previous_picture_qr_file, inverted=False)
-
-        # to print qr code on file:
-        self.app.previous_picture_file_qith_qr = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_pibooth_qr.jpg")
-        add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file,
-                             self.app.previous_picture_file_qith_qr)
-        # self.app.previous_picture = add_qr_code_to_image(self.app.previous_picture_qr_file, self.app.previous_picture_file, self.app.previous_picture_file_qith_qr)
-
-
-        if self.app.config.getboolean('PRINTER', 'black_white'):
-            self.app.previous_print_picture_file = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_pibooth_print.jpg")
-            black_white_image(self.app.previous_picture_file, self.app.previous_print_picture_file)
-        else:
-            self.app.previous_print_picture_file = self.app.previous_picture_file
+            if self.app.config.getboolean('PRINTER', 'black_white'):
+                self.app.previous_print_picture_file = osp.join(self.app.tempdir, osp.basename(self.app.dirname) + "_pibooth_print.jpg")
+                black_white_image(self.app.previous_picture_file, self.app.previous_print_picture_file)
+            else:
+                self.app.previous_print_picture_file = self.app.previous_picture_file
 
         if self.app.config.getboolean('WINDOW', 'animate') and self.app.capture_nbr > 1:
             with timeit("Asyncronously generate pictures for animation"):
@@ -421,7 +438,7 @@ class StatePrint(State):
         with timeit("Display the final picture"):
             self.app.window.set_print_number(len(self.app.printer.get_all_tasks()), self.app.printer_unavailable)
             self.app.window.show_print(self.app.previous_picture,
-                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen') and self.app.web_upload_sucessful,
+                                       self.app.config.getboolean('SERVER', 'show_qr_on_screen'),
                                        self.app.previous_picture_qr_file_inverted)
 
         self.app.led_print.blink()
@@ -430,7 +447,13 @@ class StatePrint(State):
         self.timer.start()
 
     def do_actions(self, events):
-        if self.app.find_print_event(events) and self.app.previous_print_picture_file:
+        if self.app.find_print_qr_event(events):
+            # print qr code:
+            if self.app.qr_printer.nbr_printed == 0:
+                LOGGER.info("print qr code now")
+                self.app.qr_printer.print_file(self.app.previous_picture_qr_file_print, 1)
+
+        elif self.app.find_print_event(events) and self.app.previous_print_picture_file:
 
             with timeit("Send final picture to printer"):
                 self.app.led_print.switch_on()
@@ -483,8 +506,12 @@ class PiApplication(object):
             os.makedirs(self.savedir)
 
         self.tempdir = osp.join(self.savedir, "tmp")
+        self.webdir = osp.join(self.savedir, "web")
         if not osp.isdir(self.tempdir):
             os.makedirs(self.tempdir)
+        if not osp.isdir(self.webdir):
+            os.makedirs(self.webdir)
+
         # always remove tempdir
         if osp.isdir(self.tempdir):
             shutil.rmtree(self.tempdir)
@@ -543,6 +570,7 @@ class PiApplication(object):
 
         # Initialize the printer
         self.printer = PtbPrinter(config.get('PRINTER', 'printer_name'))
+        self.qr_printer = PtbPrinter('ZJ-58')
 
         # Variables shared between states
         self.dirname = None
@@ -632,9 +660,9 @@ class PiApplication(object):
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and \
                     (type_filter is None or type_filter == event.type):
                 return event
-            if event.type == BUTTON_DOWN and event.pin == self.button_menu and \
-                    (type_filter is None or type_filter == event.type):
-                return event
+            # if event.type == BUTTON_DOWN and event.pin == self.button_menu and \
+            #         (type_filter is None or type_filter == event.type):
+            #     return event
 
         return None
 
@@ -666,6 +694,17 @@ class PiApplication(object):
             elif event.type == pygame.MOUSEBUTTONUP:
                 rect = self.window.get_rect()
                 if pygame.Rect(0, 0, rect.width // 2, rect.height).collidepoint(event.pos):
+                    if type_filter is None or type_filter == event.type:
+                        return event
+        return None
+
+    def find_print_qr_event(self, events, type_filter=None):
+        """Return the first found event if found in the list.
+        """
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONUP:
+                qr_rect = self.window.qr_rect
+                if qr_rect is not None and qr_rect.collidepoint(event.pos):
                     if type_filter is None or type_filter == event.type:
                         return event
         return None
@@ -770,6 +809,7 @@ class PiApplication(object):
             GPIO.cleanup()
             self.camera.quit()
             self.printer.quit()
+            self.qr_printer.quit()
             pygame.quit()
 
 
@@ -804,7 +844,7 @@ def main():
 
     options, _args = parser.parse_known_args()
 
-    configure_logging(options.logging, '[ %(levelname)-8s] %(name)-18s: %(message)s', filename=options.log)
+    configure_logging(options.logging, '%(asctime)s - [ %(levelname)-8s] %(name)-18s: %(message)s', filename=options.log)
 
     config = PiConfigParser("~/.config/pibooth/pibooth.cfg", options.reset)
     language.init("~/.config/pibooth/translations.cfg", options.reset)

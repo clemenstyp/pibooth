@@ -86,6 +86,7 @@ class GpCamera(BaseCamera):
             self._preview_compatible = False
         self.set_config_value('imgsettings', 'iso', self._iso)
         self.set_config_value('settings', 'capturetarget', 'Memory card')
+        self.set_config_value('capturesettings', 'assistlight', 'Off')
 
     def _show_overlay(self, text, alpha):
         """Add an image as an overlay.

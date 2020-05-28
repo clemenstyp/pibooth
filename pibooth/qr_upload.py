@@ -3,7 +3,7 @@ import sys
 import fileinput
 
 import hashlib
-from PIL import Image
+from PIL import Image, ImageDraw
 from ftplib import FTP 
 import qrcode
 import requests
@@ -11,7 +11,10 @@ import json
 import base64
 from pibooth.utils import LOGGER
 import threading
- 
+from pibooth import fonts
+import zlib
+import datetime
+
 def generate_qr_code(data,filepath, inverted = False):
     """Generates a qr code
     param data: The data for the qr code
@@ -31,6 +34,71 @@ def generate_qr_code(data,filepath, inverted = False):
         img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
     img.save(filepath, "JPEG", quality=80, optimize=True, progressive=True)
     return
+
+def create_qr_code_print(qr_code_image, result_image, texts, pic_crypt_name):
+    width = 580
+    background = Image.new('RGB', (width, 650), color=(255, 255, 255))
+    img_qr = Image.open(qr_code_image)
+
+    qr_size = (int(400), int(400))
+
+    resized_img_qr = img_qr.resize(qr_size, Image.ANTIALIAS)
+
+    background.paste(resized_img_qr, (90 + 30,0))
+
+    #('Amatic-Bold', 'AmaticSC-Regular'),
+    draw = ImageDraw.Draw(background)
+
+    text_y = 370
+
+    font_string = 'Roboto-Light'
+    help = ["http://example.org", "Code: {}".format(pic_crypt_name)]
+
+    max_width = 500
+    max_height = 50
+
+    color = (0, 0, 0)
+
+    font_name = fonts.get_filename(font_string)
+    # Use PIL to draw text because better support for fonts than OpenCV
+    font = fonts.get_pil_font(help[0], font_name, max_width, max_height)
+    for text in help:
+        text_x = 70
+        _, text_height = font.getsize(text)
+        (text_width, _baseline), (offset_x, offset_y) = font.font.getsize(text)
+        text_x += (max_width - text_width) // 2
+        draw.text((text_x - offset_x // 2,
+                   text_y + (max_height - text_height) // 2 - offset_y // 2),
+                  text, color, font=font)
+        text_y += text_height
+
+
+    # text_y = 400
+    font_string = 'Amatic-Bold'
+    max_height = (650 - text_y )/2
+    for text in texts:
+        if not text:  # Empty string: go to next text position
+            continue
+        max_width = 520
+        text_x = 60
+        color = (0, 0, 0)
+
+        font_name = fonts.get_filename(font_string)
+        # Use PIL to draw text because better support for fonts than OpenCV
+        font = fonts.get_pil_font(text, font_name, max_width, max_height)
+        _, text_height = font.getsize(text)
+        (text_width, _baseline), (offset_x, offset_y) = font.font.getsize(text)
+        text_x += (max_width - text_width) // 2
+
+        draw.text((text_x - offset_x // 2,
+                   text_y + (max_height - text_height) // 2 - offset_y // 2),
+                  text, color, font=font)
+        text_y += text_height
+
+
+    background.save(result_image)
+    return background
+
 
 def add_qr_code_to_image(qr_code_image, base_image, result_image):
     img_bg = Image.open(base_image)
@@ -104,4 +172,9 @@ def gen_hash_filename(filename):
     """Generates an hashed filename as an unique picture ID
     param filename: Filename that schould be hashed
     """
-    return hashlib.sha224(str(filename).encode("utf-8")).hexdigest() + ".jpg"
+    #return hashlib.sha224(str(filename).encode("utf-8")).hexdigest()
+
+    ts = str(int(datetime.datetime.now().timestamp()))
+    hash = str(zlib.adler32(str(filename).encode("utf-8")))
+
+    return hash[-5:] +"-" +  ts[-5:]

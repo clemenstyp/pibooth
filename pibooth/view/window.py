@@ -2,11 +2,11 @@
 
 """Pibooth view management.
 """
-
+import os
 import time
 import contextlib
 import pygame
-from pygame import gfxdraw
+from pygame import gfxdraw, Rect
 from PIL import Image
 from pibooth import pictures, fonts
 from pibooth.view import background
@@ -53,6 +53,7 @@ class PtbWindow(object):
         self._pos_map = {self.CENTER: self._center_pos,
                          self.RIGHT: self._right_pos,
                          self.LEFT: self._left_pos}
+        self.qr_rect = None
 
     def _update_foreground(self, pil_image, pos=CENTER, resize=True):
         """Show a PIL image on the foreground.
@@ -93,7 +94,7 @@ class PtbWindow(object):
         self._update_print_number()
 
     def _add_qr_code(self, qr_code_file, pos=LEFT):
-        if qr_code_file:
+        if qr_code_file and os.path.isfile(qr_code_file):
             qr_code_image = pygame.image.load(qr_code_file).convert()
             qr_code_size = qr_code_image.get_rect()
             image_width = self.size[0] * 0.2
@@ -112,9 +113,10 @@ class PtbWindow(object):
 
             pos_y = (self.size[1] / 5) - (image_height / 2)
 
-
+            self.qr_rect = Rect((int(pos_x), int(pos_y)),qr_size)
             self.surface.blit(small_qr_code, (int(pos_x), int(pos_y)))
-
+        else:
+            self.qr_rect = None
     def _update_capture_number(self):
         """Update the captures counter displayed.
         """
