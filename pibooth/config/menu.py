@@ -76,8 +76,9 @@ class PiConfigMenu(object):
                         dopause=False,
                         )
 
-        menu.add_option('Shutdown', self.shutdown)
+        menu.add_option('Minimize', self.minimize)
         menu.add_option('Exit Pibooth', pgmevt.EXIT)
+        menu.add_option('Shutdown', self.shutdown)
 
         return menu
 
@@ -88,6 +89,11 @@ class PiConfigMenu(object):
        process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
        output = process.communicate()[0]
        print(output)
+       pgmevt.EXIT
+
+    def minimize(self):
+       self._main_menu.disable()
+       pygame.display.iconify()
 
     def _build_submenu(self, section, width, height):
         """Build sub-menu"""
