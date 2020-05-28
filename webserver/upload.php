@@ -1,11 +1,11 @@
 <?php
-$pass = "FOTO-BOX";
+require_once(dirname(__FILE__).'/config.php');
 $target_dir = "uploads/";
 $json = file_get_contents('php://input');
 $data = json_decode($json, true);
 $post_pass = $data['pass'];
 
-if ($post_pass == $pass) {
+if ($post_pass == $upload_pass) {
 
     $file = base64_decode($data['image']);
     $filename = $data['filename'];

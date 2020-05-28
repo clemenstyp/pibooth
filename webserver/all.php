@@ -1,9 +1,18 @@
 <?php
+require_once(dirname(__FILE__).'/config.php');
 $uploadDirName = "uploads";
 $uploadDirectory = realpath(getcwd()."/".$uploadDirName);
 $warning = "";
-if (isset($_GET['c']))  {
-   $code = $_GET['c'];
+function logOut() {
+setcookie('PrivatePageLogin', "no_pass");
+}
+if (isset($_GET['p']) && $_GET['p'] == "logout") {
+    logOut();
+    header("Location: $_SERVER[PHP_SELF]");
+     exit;
+}
+if (isset($_COOKIE['PrivatePageLogin'])) {
+   if ($_COOKIE['PrivatePageLogin'] == md5($password.$nonsense)) {
 ?>
 
     <!-- LOGGED IN CONTENT HERE -->
@@ -26,30 +35,28 @@ if (isset($_GET['c']))  {
 
     <div class="tz-gallery">
 
-            <div class="row justify-content-md-center justify-content-sm-center">
+            <div class="row">
 
             <?php
-    $files = glob("$uploadDirectory/$code.jpg");
-    if (count($files) == 0){
-        $newCode = substr($code,0,5).'-'.substr($code,5,10);
-        $files = glob("$uploadDirectory/$newCode.jpg");
-    }
-    if (count($files) == 1){
+    $files = glob("$uploadDirectory/*.jpg");
+    usort($files, function($a, $b) {
+        return filemtime($a) < filemtime($b);
+    });
+    foreach($files as $file){
         printf('<div class="col-sm-6 col-md-4">
-                <a class="lightbox" href="%1$s/%2$s"><img src="%1$s/%2$s" class="lazy"></a>
-
-              </div>',$uploadDirName, basename($files[0]));
-
-    }else{
-        printf('<div class="col-sm-6 col-md-4">
-                <div class="text-box">
-                <p class="element-description text-center">
-                Das Bild wurde leider nicht gefunden. Aber die Fotobox läd es sicherlich gleich hoch. Probie es später einfach nocheinmal.</p>
-                </div>
-              </div>');
-
+                <a class="lightbox" href="%1$s/%2$s">
+                <img src="%1$s/%2$s" class="lazy">
+                </a>
+              </div>',$uploadDirName, basename($file));
     }
     ?>
+        </div>
+    </div>
+    <div class="row justify-content-md-center">
+    <div class="col-md-4 text-center">
+             <form action="<?php echo $_SERVER['PHP_SELF']; ?>?p=logout" method="post">
+                  <button type="submit" class="btn btn-primary">Logout</button>
+            </form>
         </div>
     </div>
 
@@ -59,12 +66,25 @@ if (isset($_GET['c']))  {
 <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
 <script>
-    //baguetteBox.run('.tz-gallery');
+    baguetteBox.run('.tz-gallery');
 </script>
 </body>
 </html>
 <?php
       exit;
+   }
+}
+
+if (isset($_GET['p']) && $_GET['p'] == "login") {
+   if ($_POST['keypass'] != $password) {
+      $warning =  "Das Kennwort ist leider falsch. :-(";
+   } else if ($_POST['keypass'] == $password) {
+      setcookie('PrivatePageLogin', md5($_POST['keypass'].$nonsense));
+      header("Location: $_SERVER[PHP_SELF]");
+      exit;
+   } else {
+      $warning = "Entschuldigung, leider hat das einloggen nicht funktioniert.";
+   }
 }
 ?>
 
@@ -95,21 +115,21 @@ if (isset($_GET['c']))  {
     }
     ?>
 
-    <div class="row justify-content-md-center justify-content-sm-center">
+    <div class="row justify-content-md-center">
     <div class="col-sm-4">
     <div class="card-deck mb-3 text-center">
 
         <div class="card mb-4 shadow-sm">
           <div class="card-header">
-            Bitte den Code eingeben:
+            Login
           </div>
           <div class="card-body">
-             <form action="<?php echo $_SERVER['PHP_SELF']; ?>" method="get">
+             <form action="<?php echo $_SERVER['PHP_SELF']; ?>?p=login" method="post">
                   <div class="form-group">
-                    <label for="keypass">Code</label>
-                    <input type="text" class="form-control" name="c" id="c">
+                    <label for="keypass">Kennwort</label>
+                    <input type="password" class="form-control" name="keypass" id="keypass">
                   </div>
-                  <button type="submit" class="btn btn-primary">Öffnen</button>
+                  <button type="submit" class="btn btn-primary">Login</button>
             </form>
           </div>
         </div>
